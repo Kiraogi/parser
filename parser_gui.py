@@ -10,6 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import json
 
 # Глобальная переменная для списка подкатегорий
 subcategories = {}
@@ -43,10 +44,17 @@ def fetch_subcategories():
     global last_update_date
     last_update_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-# Загрузка списка подкатегорий
+# Функция для сохранения категорий в файл JSON
+def save_categories_to_file():
+    current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"categories_{current_datetime}.json"
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(subcategories, f, ensure_ascii=False, indent=4)
+    messagebox.showinfo("Сохранение категорий", f"Категории сохранены в файл: {filename}")
+
+# Функция для загрузки списка подкатегорий
 def load_subcategories():
     fetch_subcategories()
-    # Обновляем интерфейс
     update_interface_with_subcategories()
 
 # Инициализация приложения tkinter
@@ -60,6 +68,10 @@ def update_interface_with_subcategories():
 # Кнопка для обновления списка подкатегорий
 update_button = tk.Button(app, text="Обновить список подкатегорий", command=load_subcategories)
 update_button.pack(pady=10)
+
+# Кнопка для сохранения категорий в файл JSON
+save_categories_button = tk.Button(app, text="Сохранить категории", command=save_categories_to_file)
+save_categories_button.pack(pady=10)
 
 # Переменные для отслеживания прогресса и общего количества товаров
 progress = tk.IntVar()
@@ -84,7 +96,7 @@ def save_to_excel(products, filename):
     df.to_excel(filename, index=False)
     messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
 
-# Функция запуска парсинга (без изменений)
+# Функция для запуска парсинга (без изменений)
 def start_parsing():
     selected_subcategory = subcategory_var.get()
     if not selected_subcategory:
