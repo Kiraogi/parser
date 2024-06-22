@@ -18,6 +18,7 @@ import json
 subcategories = {}
 last_update_date = None
 
+
 # Функция для сбора подкатегорий и их URL с помощью Selenium
 def fetch_subcategories():
     options = webdriver.ChromeOptions()
@@ -28,7 +29,8 @@ def fetch_subcategories():
     subcategories.clear()
 
     try:
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "section-catalog-list-item-link")))
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "section-catalog-list-item-link")))
         elements = driver.find_elements(By.CLASS_NAME, "section-catalog-list-item-link")
         for element in elements:
             try:
@@ -46,6 +48,7 @@ def fetch_subcategories():
     global last_update_date
     last_update_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
 # Функция для сохранения категорий в файл JSON
 def save_categories_to_file():
     current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -53,6 +56,7 @@ def save_categories_to_file():
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(subcategories, f, ensure_ascii=False, indent=4)
     messagebox.showinfo("Сохранение категорий", f"Категории сохранены в файл: {filename}")
+
 
 # Функция для загрузки категорий из файла JSON
 def load_categories_from_file():
@@ -67,18 +71,22 @@ def load_categories_from_file():
         except Exception as e:
             messagebox.showerror("Ошибка загрузки", f"Ошибка при загрузке категорий из файла: {str(e)}")
 
+
 # Функция для загрузки списка подкатегорий
 def load_subcategories():
     fetch_subcategories()
     update_interface_with_subcategories()
 
+
 # Инициализация приложения tkinter
 app = tk.Tk()
 app.title("Парсер товаров")
 
+
 # Функция для обновления интерфейса с новыми подкатегориями
 def update_interface_with_subcategories():
     subcategory_dropdown['values'] = list(subcategories.keys())
+
 
 # Кнопка для обновления списка подкатегорий
 update_button = tk.Button(app, text="Обновить список подкатегорий", command=load_subcategories)
@@ -96,22 +104,13 @@ load_categories_button.pack(pady=10)
 progress = tk.IntVar()
 total_items = tk.IntVar()
 
+
 # Функция для сохранения данных в Excel
 def save_to_excel(products, filename):
-    product_list = []
-    for product in products:
-        for price_label, price_value in product['prices'].items():
-            product_list.append({
-                'Тип товара': product['product_type'],
-                'Название': product['name'],
-                'Бренд': product['brand'],
-                'Цена за': price_label,
-                'Цена': price_value,
-                'Ссылка на товар': product['link']
-            })
-    df = pd.DataFrame(product_list)
+    df = pd.DataFrame(products)
     df.to_excel(filename, index=False)
     messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
+
 
 # Функция для запуска парсинга с использованием Selenium
 def start_parsing():
@@ -149,27 +148,58 @@ def start_parsing():
 
             for card in product_cards:
                 try:
-                    product_type = card.find_element(By.CLASS_NAME, "catalog-item-info-property").text.strip()
-                    name = card.find_element(By.CLASS_NAME, "catalog-item-title").text.strip()
-                    brand = card.find_element(By.CLASS_NAME, "catalog-item-brand").text.strip()
-                    prices = {}
-
-                    price_labels = card.find_elements(By.CLASS_NAME, "catalog-item-price-label")
-                    price_values = card.find_elements(By.CLASS_NAME, "catalog-item-price-value")
-
-                    for label, value in zip(price_labels, price_values):
-                        label_text = label.text.strip()
-                        value_text = value.text.strip()
-                        prices[label_text] = value_text
-
                     link = card.find_element(By.CLASS_NAME, "catalog-item-link").get_attribute("href")
 
+                    driver.get(link)
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, "pdp-main-info__wrapper")))
+
+                    try:
+                        main_category = driver.find_element(By.CSS_SELECTOR, "a[data-test='bread-crumbs-item'] span").text.strip()
+                    except:
+                        main_category = ""
+
+                    try:
+                        product_type = driver.find_element(By.CSS_SELECTOR, "div.value a span").text.strip()
+                    except:
+                        product_type = ""
+
+                    try:
+                        name = driver.find_element(By.CSS_SELECTOR, "h1[data-test='product-title']").text.strip()
+                    except:
+                        name = ""
+
+                    try:
+                        product_code = driver.find_element(By.CSS_SELECTOR, "span[data-test='product-code']").text.strip()
+                    except:
+                        product_code = ""
+
+                    try:
+                        brand = driver.find_element(By.CSS_SELECTOR, "div.value a span").text.strip()
+                    except:
+                        brand = ""
+
+                    prices = {}
+                    try:
+                        gold_price = driver.find_element(By.CSS_SELECTOR, "p[data-test='product-gold-price']").text.strip()
+                        prices['По карте'] = gold_price
+                    except:
+                        pass
+
+                    try:
+                        retail_price = driver.find_element(By.CSS_SELECTOR, "p[data-test='product-retail-price']").text.strip()
+                        prices['обычно'] = retail_price
+                    except:
+                        pass
+
                     products.append({
-                        'product_type': product_type,
-                        'name': name,
-                        'brand': brand,
-                        'prices': prices,
-                        'link': link
+                        'Основанная категория': main_category,
+                        'Тип товара': product_type,
+                        'Название': name,
+                        'Код товара': product_code,
+                        'Бренд': brand,
+                        'Цена за': prices,
+                        'Ссылка на товар': link
                     })
 
                     progress.set(progress.get() + 1)
@@ -201,6 +231,7 @@ def start_parsing():
 
     progress_thread = threading.Thread(target=update_progress)
     progress_thread.start()
+
 
 # Добавление виджетов для выбора подкатегории и вывода лога (без изменений)
 parse_button = tk.Button(app, text="Запустить парсинг", command=start_parsing)
