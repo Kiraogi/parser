@@ -52,6 +52,19 @@ def save_categories_to_file():
         json.dump(subcategories, f, ensure_ascii=False, indent=4)
     messagebox.showinfo("Сохранение категорий", f"Категории сохранены в файл: {filename}")
 
+# Функция для загрузки категорий из файла JSON
+def load_categories_from_file():
+    filename = filedialog.askopenfilename(filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+    if filename:
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                global subcategories
+                subcategories = json.load(f)
+            update_interface_with_subcategories()
+            messagebox.showinfo("Загрузка категорий", f"Категории успешно загружены из файла: {filename}")
+        except Exception as e:
+            messagebox.showerror("Ошибка загрузки", f"Ошибка при загрузке категорий из файла: {str(e)}")
+
 # Функция для загрузки списка подкатегорий
 def load_subcategories():
     fetch_subcategories()
@@ -73,11 +86,13 @@ update_button.pack(pady=10)
 save_categories_button = tk.Button(app, text="Сохранить категории", command=save_categories_to_file)
 save_categories_button.pack(pady=10)
 
+# Кнопка для загрузки категорий из файла JSON
+load_categories_button = tk.Button(app, text="Загрузить категории", command=load_categories_from_file)
+load_categories_button.pack(pady=10)
+
 # Переменные для отслеживания прогресса и общего количества товаров
 progress = tk.IntVar()
 total_items = tk.IntVar()
-
-# Остальной код парсера остаётся без изменений до функции start_parsing()
 
 # Функция сохранения данных в Excel (без изменений)
 def save_to_excel(products, filename):
@@ -96,7 +111,7 @@ def save_to_excel(products, filename):
     df.to_excel(filename, index=False)
     messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
 
-# Функция для запуска парсинга (без изменений)
+# Функция для запуска парсинга (с заглушкой)
 def start_parsing():
     selected_subcategory = subcategory_var.get()
     if not selected_subcategory:
@@ -111,18 +126,9 @@ def start_parsing():
     products = []
 
     def run_parsing():
-        result = parse_catalog_petrovich(selected_subcategory, progress, total_items)
-        if result:
-            products.extend(result)
-            for product in result:
-                output_text.insert(tk.END, f"{product}\n")
-        else:
-            output_text.insert(tk.END, "Ошибка при парсинге подкатегории.\n")
-
-        if products:
-            filename = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
-            if filename:
-                save_to_excel(products, filename)
+        # Заглушка для функции парсинга
+        # Здесь должен быть ваш реальный код для парсинга данных с выбранной подкатегории
+        print(f"Парсинг данных для подкатегории: {selected_subcategory}")
 
     def update_progress():
         while progress.get() < total_items.get():
