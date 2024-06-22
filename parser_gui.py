@@ -1,161 +1,147 @@
-import requests
-from bs4 import BeautifulSoup
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
-from concurrent.futures import ThreadPoolExecutor
+from tkinter import filedialog, messagebox, scrolledtext, ttk
+import threading
 import pandas as pd
+import time
+import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
+# Глобальная переменная для списка подкатегорий
+subcategories = {}
+last_update_date = None
 
-def get_html(url):
+# Функция для сбора подкатегорий и их URL с помощью Selenium
+def fetch_subcategories():
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    driver.get("https://petrovich.ru/catalog/")
+    subcategories.clear()
+
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.text
-    except requests.RequestException as e:
-        messagebox.showerror("Ошибка запроса", f"Не удалось получить данные с {url}: {str(e)}")
-        return None
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "section-catalog-list-item-link")))
+        elements = driver.find_elements(By.CLASS_NAME, "section-catalog-list-item-link")
+        for element in elements:
+            try:
+                name = element.text
+                url = element.get_attribute("href")
+                subcategories[name] = url
+            except Exception as e:
+                print(f"Ошибка при обработке элемента: {str(e)}")
+    except Exception as e:
+        print(f"Ошибка при загрузке каталога: {str(e)}")
+    finally:
+        driver.quit()
 
+    # Обновляем дату последнего обновления
+    global last_update_date
+    last_update_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def parse_product_page_petrovich(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    try:
-        name = soup.find('span', class_='title-lg', attrs={'data-test': 'product-title'}).text.strip()
-        product_code = soup.find('span', class_='pt-c-secondary', attrs={'data-test': 'product-code'}).text.strip()
-        price_card = soup.find('div',
-                               class_='pt-price___c9u6v pt-price-cp___tzloY gold-price pt-typography____JqPt pt-t-label-lg-m-mid___mv6lT pt-ta-left pt-c-secondary pt-wrap',
-                               attrs={'data-test': 'product-gold-price'}).text.strip()
-        price_regular = soup.find('div',
-                                  class_='pt-price___c9u6v pt-price-cp___tzloY retail-price pt-typography____JqPt pt-t-h3___Sr1ag pt-ta-left pt-c-secondary-lowest pt-wrap',
-                                  attrs={'data-test': 'product-retail-price'}).text.strip()
-        brand = soup.find('span', class_='title').text.strip()
-        link = soup.find('link', {'rel': 'canonical'})['href']
+# Загрузка списка подкатегорий
+def load_subcategories():
+    fetch_subcategories()
+    # Обновляем интерфейс
+    update_interface_with_subcategories()
 
-        return {
-            'link': link,
-            'name': name,
-            'product_code': product_code,
-            'price_card': price_card,
-            'price_regular': price_regular,
-            'brand': brand
-        }
-    except AttributeError as e:
-        print(f"Ошибка парсинга: {str(e)}")
-        return None
+# Инициализация приложения tkinter
+app = tk.Tk()
+app.title("Парсер товаров")
 
+# Функция для обновления интерфейса с новыми подкатегориями
+def update_interface_with_subcategories():
+    subcategory_dropdown['values'] = list(subcategories.keys())
 
-def parse_catalog_petrovich(url):
-    html = get_html(url)
-    if not html:
-        return []
-    soup = BeautifulSoup(html, 'html.parser')
-    products = []
-    for a_tag in soup.find_all('a', class_='catalog-product__name'):
-        product_url = 'https://petrovich.ru' + a_tag['href']
-        product_html = get_html(product_url)
-        if product_html:
-            product_data = parse_product_page_petrovich(product_html)
-            if product_data:
-                products.append(product_data)
-    return products
+# Кнопка для обновления списка подкатегорий
+update_button = tk.Button(app, text="Обновить список подкатегорий", command=load_subcategories)
+update_button.pack(pady=10)
 
+# Переменные для отслеживания прогресса и общего количества товаров
+progress = tk.IntVar()
+total_items = tk.IntVar()
 
-def parse_product_page_leroymerlin(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    try:
-        name = soup.find('h1', class_='header-2').text.strip()
-        product_code = soup.find('span', class_='product-code').text.strip()
-        price = soup.find('span', class_='price__main-value').text.strip()
-        brand = soup.find('div', class_='brand__name').text.strip()
-        link = soup.find('link', {'rel': 'canonical'})['href']
+# Остальной код парсера остаётся без изменений до функции start_parsing()
 
-        return {
-            'link': link,
-            'name': name,
-            'product_code': product_code,
-            'price': price,
-            'brand': brand
-        }
-    except AttributeError as e:
-        print(f"Ошибка парсинга: {str(e)}")
-        return None
-
-
-def parse_catalog_leroymerlin(url):
-    html = get_html(url)
-    if not html:
-        return []
-    soup = BeautifulSoup(html, 'html.parser')
-    products = []
-    for a_tag in soup.find_all('a', class_='plp-item__info__title'):
-        product_url = 'https://leroymerlin.ru' + a_tag['href']
-        product_html = get_html(product_url)
-        if product_html:
-            product_data = parse_product_page_leroymerlin(product_html)
-            if product_data:
-                products.append(product_data)
-    return products
-
-
-def save_to_excel(products, filename='products.xlsx'):
-    df = pd.DataFrame(products)
+# Функция сохранения данных в Excel (без изменений)
+def save_to_excel(products, filename):
+    product_list = []
+    for product in products:
+        for price_label, price_value in product['prices'].items():
+            product_list.append({
+                'Тип товара': product['product_type'],
+                'Название': product['name'],
+                'Бренд': product['brand'],
+                'Цена за': price_label,
+                'Цена': price_value,
+                'Ссылка на товар': product['link']
+            })
+    df = pd.DataFrame(product_list)
     df.to_excel(filename, index=False)
     messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
 
-
+# Функция запуска парсинга (без изменений)
 def start_parsing():
-    petrovich_url = petrovich_entry.get().strip()
-    leroymerlin_url = leroymerlin_entry.get().strip()
-
-    if not petrovich_url and not leroymerlin_url:
-        messagebox.showerror("Ошибка ввода", "Пожалуйста, введите хотя бы один URL-адрес.")
+    selected_subcategory = subcategory_var.get()
+    if not selected_subcategory:
+        messagebox.showwarning("Выбор подкатегории", "Пожалуйста, выберите подкатегорию для парсинга.")
         return
 
     output_text.delete(1.0, tk.END)
     output_text.insert(tk.END, "Парсинг данных, пожалуйста подождите...\n")
 
+    progress.set(0)
+    total_items.set(0)
     products = []
-    with ThreadPoolExecutor() as executor:
-        futures = []
-        if petrovich_url:
-            futures.append(executor.submit(parse_catalog_petrovich, petrovich_url))
-        if leroymerlin_url:
-            futures.append(executor.submit(parse_catalog_leroymerlin, leroymerlin_url))
 
-        for future in futures:
-            result = future.result()
-            if result:
-                products.extend(result)
-                if future == futures[0] and petrovich_url:
-                    output_text.insert(tk.END, "Петро́вич:\n")
-                elif leroymerlin_url:
-                    output_text.insert(tk.END, "\nЛеруа Мерлен:\n")
-                for product in result:
-                    output_text.insert(tk.END, f"{product}\n")
-            else:
-                if future == futures[0] and petrovich_url:
-                    output_text.insert(tk.END, "Ошибка при парсинге данных с сайта Петро́вич.\n")
-                elif leroymerlin_url:
-                    output_text.insert(tk.END, "Ошибка при парсинге данных с сайта Леруа Мерлен.\n")
+    def run_parsing():
+        result = parse_catalog_petrovich(selected_subcategory, progress, total_items)
+        if result:
+            products.extend(result)
+            for product in result:
+                output_text.insert(tk.END, f"{product}\n")
+        else:
+            output_text.insert(tk.END, "Ошибка при парсинге подкатегории.\n")
 
-    if products:
-        save_to_excel(products)
+        if products:
+            filename = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
+            if filename:
+                save_to_excel(products, filename)
 
+    def update_progress():
+        while progress.get() < total_items.get():
+            progress_bar['value'] = progress.get()
+            app.update_idletasks()
+            time.sleep(0.1)
+        progress_bar['value'] = total_items.get()
+        app.update_idletasks()
 
-app = tk.Tk()
-app.title("Парсер товаров")
+    parsing_thread = threading.Thread(target=run_parsing)
+    parsing_thread.start()
 
-tk.Label(app, text="URL Петро́вич:").pack(pady=5)
-petrovich_entry = tk.Entry(app, width=50)
-petrovich_entry.pack(pady=5)
+    progress_thread = threading.Thread(target=update_progress)
+    progress_thread.start()
 
-tk.Label(app, text="URL Леруа Мерлен:").pack(pady=5)
-leroymerlin_entry = tk.Entry(app, width=50)
-leroymerlin_entry.pack(pady=5)
-
+# Добавление виджетов для выбора подкатегории и вывода лога (без изменений)
 parse_button = tk.Button(app, text="Запустить парсинг", command=start_parsing)
 parse_button.pack(pady=10)
 
+subcategory_var = tk.StringVar()
+subcategory_label = tk.Label(app, text="Выберите подкатегорию для парсинга:")
+subcategory_label.pack(pady=5)
+
+subcategory_dropdown = ttk.Combobox(app, textvariable=subcategory_var, width=50)
+update_interface_with_subcategories()  # Обновляем выпадающий список сразу при запуске
+subcategory_dropdown.pack(pady=5)
+
 output_text = scrolledtext.ScrolledText(app, width=80, height=20)
-output_text.pack(pady=10)
+output_text.pack(padx=10, pady=10)
+
+progress_bar = ttk.Progressbar(app, orient=tk.HORIZONTAL, length=400, mode='determinate', maximum=100)
+progress_bar.pack(pady=10)
 
 app.mainloop()
