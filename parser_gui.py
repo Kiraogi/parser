@@ -4,7 +4,6 @@ import threading
 import pandas as pd
 import time
 import datetime
-import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -44,7 +43,6 @@ def fetch_subcategories():
     finally:
         driver.quit()
 
-    # Обновляем дату последнего обновления
     global last_update_date
     last_update_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -88,6 +86,75 @@ def update_interface_with_subcategories():
     subcategory_dropdown['values'] = list(subcategories.keys())
 
 
+# Функция для сохранения данных в Excel
+def save_to_excel(products, filename):
+    df = pd.DataFrame(products)
+    df.to_excel(filename, index=False)
+    messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
+
+
+# Функция для парсинга данных по товару
+def fetch_product_details(product_link):
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    product_details = {}
+
+    try:
+        driver.get(product_link)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "product-details")))
+
+        page_source = driver.page_source
+        soup = BeautifulSoup(page_source, 'html.parser')
+
+        # Пример парсинга названия товара
+        name_tag = soup.find('h1', class_='product-title')
+        product_details['Название'] = name_tag.text.strip() if name_tag else 'N/A'
+
+        # Пример парсинга цены товара
+        price_tag = soup.find('span', class_='product-price')
+        product_details['Цена'] = price_tag.text.strip() if price_tag else 'N/A'
+
+        # Пример парсинга описания товара
+        description_tag = soup.find('div', class_='product-description')
+        product_details['Описание'] = description_tag.text.strip() if description_tag else 'N/A'
+
+        # Добавьте здесь другой код для парсинга дополнительных данных о товаре
+
+    except Exception as e:
+        print(f"Ошибка при парсинге данных о товаре: {str(e)}")
+    finally:
+        driver.quit()
+
+    return product_details
+
+
+# Функция для запуска парсинга данных по ссылке на товар
+def start_parsing_product_link():
+    product_link = product_link_entry.get()
+    if not product_link:
+        messagebox.showwarning("Ввод ссылки", "Пожалуйста, введите ссылку на товар.")
+        return
+
+    output_text.delete(1.0, tk.END)
+    output_text.insert(tk.END, "Парсинг данных, пожалуйста, подождите...\n")
+
+    def run_parsing():
+        product_details = fetch_product_details(product_link)
+        if product_details:
+            df = pd.DataFrame([product_details])
+            filename = filedialog.asksaveasfilename(defaultextension=".xlsx",
+                                                    filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
+            if filename:
+                save_to_excel([product_details], filename)
+            output_text.insert(tk.END, f"Данные о товаре:\n{product_details}\n")
+        else:
+            output_text.insert(tk.END, "Не удалось получить данные о товаре.\n")
+
+    parsing_thread = threading.Thread(target=run_parsing)
+    parsing_thread.start()
+
+
 # Кнопка для обновления списка подкатегорий
 update_button = tk.Button(app, text="Обновить список подкатегорий", command=load_subcategories)
 update_button.pack(pady=10)
@@ -104,139 +171,7 @@ load_categories_button.pack(pady=10)
 progress = tk.IntVar()
 total_items = tk.IntVar()
 
-
-# Функция для сохранения данных в Excel
-def save_to_excel(products, filename):
-    df = pd.DataFrame(products)
-    df.to_excel(filename, index=False)
-    messagebox.showinfo("Сохранение данных", f"Данные успешно сохранены в файл {filename}")
-
-
-# Функция для запуска парсинга с использованием Selenium
-def start_parsing():
-    selected_subcategory = subcategory_var.get()
-    if not selected_subcategory:
-        messagebox.showwarning("Выбор подкатегории", "Пожалуйста, выберите подкатегорию для парсинга.")
-        return
-
-    output_text.delete(1.0, tk.END)
-    output_text.insert(tk.END, "Парсинг данных, пожалуйста, подождите...\n")
-
-    progress.set(0)
-    total_items.set(0)
-    products = []
-
-    def update_progress():
-        while progress.get() < total_items.get():
-            progress_bar['value'] = progress.get()
-            app.update_idletasks()
-            time.sleep(0.1)
-        progress_bar['value'] = total_items.get()
-        app.update_idletasks()
-
-    def run_parsing():
-        try:
-            options = webdriver.ChromeOptions()
-            options.add_argument("--headless")
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-            driver.get(subcategories[selected_subcategory])
-
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, "catalog-item")))
-
-            product_cards = driver.find_elements(By.CLASS_NAME, "catalog-item")
-            total_items.set(len(product_cards))
-
-            for card in product_cards:
-                try:
-                    link = card.find_element(By.CLASS_NAME, "catalog-item-link").get_attribute("href")
-
-                    driver.get(link)
-                    WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CLASS_NAME, "pdp-main-info__wrapper")))
-
-                    try:
-                        main_category = driver.find_element(By.CSS_SELECTOR, "a[data-test='bread-crumbs-item'] span").text.strip()
-                    except:
-                        main_category = ""
-
-                    try:
-                        product_type = driver.find_element(By.CSS_SELECTOR, "div.value a span").text.strip()
-                    except:
-                        product_type = ""
-
-                    try:
-                        name = driver.find_element(By.CSS_SELECTOR, "h1[data-test='product-title']").text.strip()
-                    except:
-                        name = ""
-
-                    try:
-                        product_code = driver.find_element(By.CSS_SELECTOR, "span[data-test='product-code']").text.strip()
-                    except:
-                        product_code = ""
-
-                    try:
-                        brand = driver.find_element(By.CSS_SELECTOR, "div.value a span").text.strip()
-                    except:
-                        brand = ""
-
-                    prices = {}
-                    try:
-                        gold_price = driver.find_element(By.CSS_SELECTOR, "p[data-test='product-gold-price']").text.strip()
-                        prices['По карте'] = gold_price
-                    except:
-                        pass
-
-                    try:
-                        retail_price = driver.find_element(By.CSS_SELECTOR, "p[data-test='product-retail-price']").text.strip()
-                        prices['обычно'] = retail_price
-                    except:
-                        pass
-
-                    products.append({
-                        'Основанная категория': main_category,
-                        'Тип товара': product_type,
-                        'Название': name,
-                        'Код товара': product_code,
-                        'Бренд': brand,
-                        'Цена за': prices,
-                        'Ссылка на товар': link
-                    })
-
-                    progress.set(progress.get() + 1)
-                    app.update_idletasks()
-
-                except Exception as e:
-                    print(f"Ошибка при обработке товара: {str(e)}")
-
-            if products:
-                output_text.insert(tk.END, f"Найдено товаров: {len(products)}\n")
-                filename = filedialog.asksaveasfilename(defaultextension=".xlsx",
-                                                        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")])
-                if filename:
-                    save_to_excel(products, filename)
-            else:
-                output_text.insert(tk.END, "Товары не найдены.\n")
-
-            driver.quit()
-
-        except KeyError:
-            messagebox.showerror("Ошибка выбора подкатегории", "Выбранная подкатегория не найдена.")
-        except Exception as e:
-            messagebox.showerror("Ошибка парсинга", f"Произошла ошибка при парсинге: {str(e)}")
-        finally:
-            update_progress()
-
-    parsing_thread = threading.Thread(target=run_parsing)
-    parsing_thread.start()
-
-    progress_thread = threading.Thread(target=update_progress)
-    progress_thread.start()
-
-
-# Добавление виджетов для выбора подкатегории и вывода лога (без изменений)
-parse_button = tk.Button(app, text="Запустить парсинг", command=start_parsing)
-parse_button.pack(pady=10)
-
+# Добавление виджетов для выбора подкатегории и ввода ссылки на товар
 subcategory_var = tk.StringVar()
 subcategory_label = tk.Label(app, text="Выберите подкатегорию для парсинга:")
 subcategory_label.pack(pady=5)
@@ -245,6 +180,17 @@ subcategory_dropdown = ttk.Combobox(app, textvariable=subcategory_var, width=50)
 update_interface_with_subcategories()  # Обновляем выпадающий список сразу при запуске
 subcategory_dropdown.pack(pady=5)
 
+product_link_label = tk.Label(app, text="Или введите ссылку на товар для парсинга:")
+product_link_label.pack(pady=5)
+
+product_link_entry = tk.Entry(app, width=50)
+product_link_entry.pack(pady=5)
+
+# Кнопка для запуска парсинга данных по ссылке на товар
+parse_product_button = tk.Button(app, text="Запустить парсинг по ссылке", command=start_parsing_product_link)
+parse_product_button.pack(pady=10)
+
+# Поле для вывода лога
 output_text = scrolledtext.ScrolledText(app, width=80, height=20)
 output_text.pack(padx=10, pady=10)
 
