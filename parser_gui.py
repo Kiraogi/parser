@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 import threading
 import pandas as pd
-import time
 import datetime
 from bs4 import BeautifulSoup
 from selenium import webdriver
