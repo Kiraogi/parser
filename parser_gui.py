@@ -24,7 +24,7 @@ def fetch_subcategories():
     options.add_argument("--headless")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-    driver.get("https://petrovich.ru/catalog/")
+    driver.get("...")
     subcategories.clear()
 
     try:
